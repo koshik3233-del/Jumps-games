@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>Jump Runner Pro</title>
+  <link rel="icon" type="image/x-icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🦸</text></svg>">
   <style>
     * {
       margin: 0;
@@ -14,14 +15,14 @@
     }
     
     body {
-      font-family: 'Arial', sans-serif;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       background: linear-gradient(135deg, #1a2980 0%, #26d0ce 100%);
       min-height: 100vh;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      overflow: hidden;
+      overflow-x: hidden;
       color: white;
       padding: 10px;
     }
@@ -197,6 +198,7 @@
       user-select: none;
       -webkit-user-select: none;
       animation: pulse 2s infinite;
+      outline: none;
     }
     
     .onscreen-jump-button:active {
@@ -236,6 +238,7 @@
       z-index: 10;
       user-select: none;
       -webkit-user-select: none;
+      outline: none;
     }
     
     .onscreen-super-button:active {
@@ -329,6 +332,7 @@
       cursor: pointer;
       margin-top: 15px;
       transition: all 0.2s;
+      outline: none;
     }
     
     .start-btn:active {
@@ -682,7 +686,12 @@
   </div>
 
   <script>
+    // Initialize canvas and context
     const canvas = document.getElementById("gameCanvas");
+    if (!canvas) {
+      console.error("Canvas element not found!");
+      document.body.innerHTML = '<h1 style="color: white; text-align: center;">Error: Canvas not found. Please refresh the page.</h1>';
+    }
     const ctx = canvas.getContext("2d");
     
     // Set canvas dimensions
@@ -692,7 +701,13 @@
       canvas.height = Math.min(window.innerHeight * 0.7, 500);
     }
     
-    resizeCanvas();
+    // Initialize on load
+    window.addEventListener('load', () => {
+      resizeCanvas();
+      updateDisplays();
+      document.getElementById('startModal').style.display = 'flex';
+    });
+    
     window.addEventListener('resize', resizeCanvas);
     
     // Game variables
@@ -701,8 +716,8 @@
     let gravity = 0.8;
     let score = 0;
     let coins = 0;
-    let wallet = parseInt(localStorage.getItem('runnerWallet')) || 0;
-    let highScore = localStorage.getItem('runnerHighScore') || 0;
+    let wallet = 0;
+    let highScore = 0;
     let gameOver = false;
     let isPaused = true;
     let lastTime = 0;
@@ -715,15 +730,32 @@
     let hasDoubleJump = false;
     let canDoubleJump = false;
     
+    // Load saved data
+    try {
+      wallet = parseInt(localStorage.getItem('runnerWallet')) || 0;
+      highScore = parseInt(localStorage.getItem('runnerHighScore')) || 0;
+    } catch (e) {
+      console.log("Local storage not available, using defaults");
+    }
+    
     // Player upgrades
-    const upgrades = JSON.parse(localStorage.getItem('runnerUpgrades')) || {
+    let upgrades = {
       speed: 1,
       jump: 1,
       shield: false,
       superJump: false,
-      character: 1,  // 1 = default, 2 = parkour
+      character: 1,
       doubleJump: false
     };
+    
+    try {
+      const savedUpgrades = localStorage.getItem('runnerUpgrades');
+      if (savedUpgrades) {
+        upgrades = JSON.parse(savedUpgrades);
+      }
+    } catch (e) {
+      console.log("Could not load upgrades, using defaults");
+    }
     
     // Update displays
     function updateDisplays() {
@@ -740,19 +772,21 @@
       
       // Update super jump button state
       const superBtn = document.getElementById('onscreenSuperBtn');
-      if (superJumpCharges > 0) {
-        superBtn.classList.remove('disabled');
-        superBtn.innerHTML = `SUPER<br><span>🚀 (${superJumpCharges})</span>`;
-      } else {
-        superBtn.classList.add('disabled');
-        superBtn.innerHTML = 'SUPER<br><span>🚀 (0)</span>';
+      if (superBtn) {
+        if (superJumpCharges > 0) {
+          superBtn.classList.remove('disabled');
+          superBtn.innerHTML = 'SUPER<br><span>🚀 (' + superJumpCharges + ')</span>';
+        } else {
+          superBtn.classList.add('disabled');
+          superBtn.innerHTML = 'SUPER<br><span>🚀 (0)</span>';
+        }
       }
     }
     
     // Modified Person Character Object - "Alex the Runner"
     const player = {
       x: 80,
-      y: canvas.height - 100,
+      y: 0,
       width: 40,
       height: 60,
       dy: 0,
@@ -760,14 +794,24 @@
       superJumping: false,
       frame: 0,
       color: '#3498db',
-      characterType: upgrades.character,
-      jumpPower: 15 * upgrades.jump,
-      hasShield: upgrades.shield,
+      characterType: 1,
+      jumpPower: 15,
+      hasShield: false,
       shieldTimer: 0,
       isMagnet: false,
       magnetTimer: 0,
       doubleCoins: false,
       doubleTimer: 0,
+      
+      init: function() {
+        this.y = canvas.height - this.height - 40;
+        this.characterType = upgrades.character;
+        this.jumpPower = 15 * upgrades.jump;
+        this.hasShield = upgrades.shield;
+        if (this.hasShield) {
+          this.shieldTimer = 300;
+        }
+      },
       
       draw: function() {
         // Draw shield if active
@@ -1038,6 +1082,7 @@
           this.jumping = true;
           this.superJumping = false;
           canDoubleJump = true;
+          createJumpParticles();
         } else if (this.jumping && hasDoubleJump && canDoubleJump && !this.superJumping) {
           // Double jump!
           this.dy = this.jumpPower * 0.8;
@@ -1079,6 +1124,9 @@
         updatePowerUpDisplay();
       }
     };
+    
+    // Initialize player
+    player.init();
     
     // Jump particles
     let particles = [];
@@ -1263,11 +1311,14 @@
     }
     
     // Initialize clouds
-    for (let i = 0; i < 5; i++) {
-      clouds.push({
-        ...createCloud(),
-        x: Math.random() * canvas.width
-      });
+    function initClouds() {
+      clouds = [];
+      for (let i = 0; i < 5; i++) {
+        clouds.push({
+          ...createCloud(),
+          x: Math.random() * canvas.width
+        });
+      }
     }
     
     // Create new obstacle
@@ -1381,8 +1432,8 @@
           
           ctx.fillStyle = this.color;
           ctx.beginPath();
-          ctx.roundRect(-this.width/2, -this.height/2, this.width, this.height, 8);
-          ctx.fill();
+          // Use fillRect instead of roundRect for compatibility
+          ctx.fillRect(-this.width/2, -this.height/2, this.width, this.height);
           
           ctx.fillStyle = 'white';
           ctx.font = '16px Arial';
@@ -1408,26 +1459,28 @@
     // Update power-up display
     function updatePowerUpDisplay() {
       const indicator = document.getElementById('powerUpIndicator');
+      if (!indicator) return;
+      
       indicator.innerHTML = '';
       
       if (player.hasShield) {
         const shield = document.createElement('div');
         shield.className = 'power-up';
-        shield.innerHTML = `<div class="power-up-icon shield-icon"></div> ${Math.ceil(player.shieldTimer/60)}s`;
+        shield.innerHTML = '<div class="power-up-icon shield-icon"></div> ' + Math.ceil(player.shieldTimer/60) + 's';
         indicator.appendChild(shield);
       }
       
       if (player.isMagnet) {
         const magnet = document.createElement('div');
         magnet.className = 'power-up';
-        magnet.innerHTML = `<div class="power-up-icon magnet-icon"></div> ${Math.ceil(player.magnetTimer/60)}s`;
+        magnet.innerHTML = '<div class="power-up-icon magnet-icon"></div> ' + Math.ceil(player.magnetTimer/60) + 's';
         indicator.appendChild(magnet);
       }
       
       if (player.doubleCoins) {
         const double = document.createElement('div');
         double.className = 'power-up';
-        double.innerHTML = `<div class="power-up-icon double-icon"></div> ${Math.ceil(player.doubleTimer/60)}s`;
+        double.innerHTML = '<div class="power-up-icon double-icon"></div> ' + Math.ceil(player.doubleTimer/60) + 's';
         indicator.appendChild(double);
       }
     }
@@ -1464,7 +1517,7 @@
         ctx.fillStyle = '#f1c40f';
         ctx.font = 'bold 30px Arial';
         ctx.textAlign = 'center';
-        ctx.fillText(`LEVEL UP! ${level}`, canvas.width/2, 100);
+        ctx.fillText('LEVEL UP! ' + level, canvas.width/2, 100);
       }
     }
     
@@ -1475,16 +1528,20 @@
       
       // Add coins to wallet
       wallet += coins;
-      localStorage.setItem('runnerWallet', wallet);
       
       // Update high score
       if (score > highScore) {
         highScore = score;
-        localStorage.setItem('runnerHighScore', highScore);
       }
       
-      // Save upgrades
-      localStorage.setItem('runnerUpgrades', JSON.stringify(upgrades));
+      // Save data
+      try {
+        localStorage.setItem('runnerWallet', wallet.toString());
+        localStorage.setItem('runnerHighScore', highScore.toString());
+        localStorage.setItem('runnerUpgrades', JSON.stringify(upgrades));
+      } catch (e) {
+        console.log("Could not save to localStorage");
+      }
       
       // Show game over modal
       document.getElementById('finalScore').textContent = score;
@@ -1513,20 +1570,15 @@
       maxSuperJumps = upgrades.superJump ? 3 : 1;
       hasDoubleJump = upgrades.doubleJump;
       
-      player.hasShield = upgrades.shield;
+      player.init();
       player.isMagnet = false;
       player.doubleCoins = false;
       player.superJumping = false;
-      player.y = canvas.height - player.height - 40;
       player.jumping = false;
       player.dy = 0;
-      player.characterType = upgrades.character;
-      player.jumpPower = 15 * upgrades.jump;
       canDoubleJump = true;
       
-      if (player.hasShield) {
-        player.shieldTimer = 300;
-      }
+      initClouds();
       
       document.getElementById('gameOverModal').style.display = 'none';
       document.getElementById('startModal').style.display = 'none';
@@ -1574,8 +1626,13 @@
             break;
         }
         
-        localStorage.setItem('runnerWallet', wallet);
-        localStorage.setItem('runnerUpgrades', JSON.stringify(upgrades));
+        try {
+          localStorage.setItem('runnerWallet', wallet.toString());
+          localStorage.setItem('runnerUpgrades', JSON.stringify(upgrades));
+        } catch (e) {
+          console.log("Could not save to localStorage");
+        }
+        
         updateDisplays();
         updatePowerUpDisplay();
         document.getElementById('shopWallet').textContent = wallet;
@@ -1751,131 +1808,197 @@
       requestAnimationFrame(gameLoop);
     }
     
-    // Event Listeners
-    document.getElementById('startBtn').addEventListener('click', () => {
-      resetGame();
-      isPaused = false;
-      lastTime = 0;
-      requestAnimationFrame(gameLoop);
-    });
-    
-    document.getElementById('shopBtn').addEventListener('click', openShop);
-    document.getElementById('closeShopBtn').addEventListener('click', () => {
-      document.getElementById('shopModal').style.display = 'none';
-      isPaused = false;
-      lastTime = 0;
-      requestAnimationFrame(gameLoop);
-    });
-    
-    document.getElementById('restartModalBtn').addEventListener('click', resetGame);
-    
-    document.getElementById('pauseBtn').addEventListener('click', () => {
-      isPaused = !isPaused;
-      document.getElementById('pauseBtn').textContent = isPaused ? '▶ Play' : '⏸ Pause';
-      if (!isPaused && !gameOver) {
-        lastTime = 0;
-        requestAnimationFrame(gameLoop);
-      }
-    });
-    
-    // On-screen button events
-    document.getElementById('onscreenJumpBtn').addEventListener('click', () => {
-      player.jump();
-      createJumpParticles();
-    });
-    
-    document.getElementById('onscreenSuperBtn').addEventListener('click', () => {
-      if (superJumpCharges > 0) {
-        player.superJump();
-      }
-    });
-    
-    // Shop item clicks
-    document.getElementById('buySpeed').addEventListener('click', () => buyUpgrade('speed', 100));
-    document.getElementById('buyJump').addEventListener('click', () => buyUpgrade('jump', 150));
-    document.getElementById('buyShield').addEventListener('click', () => buyUpgrade('shield', 200));
-    document.getElementById('buySuperJump').addEventListener('click', () => buyUpgrade('superJump', 300));
-    document.getElementById('buyCharacter').addEventListener('click', () => buyUpgrade('character', 500));
-    document.getElementById('buyDoubleJump').addEventListener('click', () => buyUpgrade('doubleJump', 400));
-    
-    // Tap anywhere on canvas to jump
-    canvas.addEventListener('touchstart', (e) => {
-      e.preventDefault();
-      player.jump();
-      createJumpParticles();
-    });
-    
-    canvas.addEventListener('click', () => {
-      player.jump();
-      createJumpParticles();
-    });
-    
-    // Keyboard controls
-    window.addEventListener('keydown', (e) => {
-      if (e.code === 'Space' || e.code === 'ArrowUp') {
-        e.preventDefault();
-        player.jump();
-        createJumpParticles();
-        if (gameOver) resetGame();
-      }
-      
-      if (e.code === 'KeyS' || e.code === 'ArrowDown') {
-        e.preventDefault();
-        if (superJumpCharges > 0) {
-          player.superJump();
-        }
-      }
-      
-      if (e.code === 'KeyP') {
-        e.preventDefault();
-        isPaused = !isPaused;
-        document.getElementById('pauseBtn').textContent = isPaused ? '▶ Play' : '⏸ Pause';
-        if (!isPaused && !gameOver) {
+    // Event Listeners setup
+    function setupEventListeners() {
+      // Start button
+      const startBtn = document.getElementById('startBtn');
+      if (startBtn) {
+        startBtn.addEventListener('click', () => {
+          resetGame();
+          isPaused = false;
           lastTime = 0;
           requestAnimationFrame(gameLoop);
+        });
+      }
+      
+      // Shop button
+      const shopBtn = document.getElementById('shopBtn');
+      if (shopBtn) {
+        shopBtn.addEventListener('click', openShop);
+      }
+      
+      // Close shop button
+      const closeShopBtn = document.getElementById('closeShopBtn');
+      if (closeShopBtn) {
+        closeShopBtn.addEventListener('click', () => {
+          document.getElementById('shopModal').style.display = 'none';
+          isPaused = false;
+          lastTime = 0;
+          requestAnimationFrame(gameLoop);
+        });
+      }
+      
+      // Restart button
+      const restartModalBtn = document.getElementById('restartModalBtn');
+      if (restartModalBtn) {
+        restartModalBtn.addEventListener('click', resetGame);
+      }
+      
+      // Pause button
+      const pauseBtn = document.getElementById('pauseBtn');
+      if (pauseBtn) {
+        pauseBtn.addEventListener('click', () => {
+          isPaused = !isPaused;
+          pauseBtn.textContent = isPaused ? '▶ Play' : '⏸ Pause';
+          if (!isPaused && !gameOver) {
+            lastTime = 0;
+            requestAnimationFrame(gameLoop);
+          }
+        });
+      }
+      
+      // On-screen jump button
+      const onscreenJumpBtn = document.getElementById('onscreenJumpBtn');
+      if (onscreenJumpBtn) {
+        onscreenJumpBtn.addEventListener('click', () => {
+          player.jump();
+          createJumpParticles();
+        });
+      }
+      
+      // On-screen super button
+      const onscreenSuperBtn = document.getElementById('onscreenSuperBtn');
+      if (onscreenSuperBtn) {
+        onscreenSuperBtn.addEventListener('click', () => {
+          if (superJumpCharges > 0) {
+            player.superJump();
+          }
+        });
+      }
+      
+      // Shop item clicks
+      const shopItems = [
+        { id: 'buySpeed', type: 'speed', price: 100 },
+        { id: 'buyJump', type: 'jump', price: 150 },
+        { id: 'buyShield', type: 'shield', price: 200 },
+        { id: 'buySuperJump', type: 'superJump', price: 300 },
+        { id: 'buyCharacter', type: 'character', price: 500 },
+        { id: 'buyDoubleJump', type: 'doubleJump', price: 400 }
+      ];
+      
+      shopItems.forEach(item => {
+        const element = document.getElementById(item.id);
+        if (element) {
+          element.addEventListener('click', () => buyUpgrade(item.type, item.price));
+        }
+      });
+      
+      // Tap anywhere on canvas to jump
+      if (canvas) {
+        canvas.addEventListener('touchstart', (e) => {
+          e.preventDefault();
+          player.jump();
+          createJumpParticles();
+        });
+        
+        canvas.addEventListener('click', () => {
+          player.jump();
+          createJumpParticles();
+        });
+      }
+      
+      // Keyboard controls
+      window.addEventListener('keydown', (e) => {
+        if (e.code === 'Space' || e.code === 'ArrowUp') {
+          e.preventDefault();
+          player.jump();
+          createJumpParticles();
+          if (gameOver) resetGame();
+        }
+        
+        if (e.code === 'KeyS' || e.code === 'ArrowDown') {
+          e.preventDefault();
+          if (superJumpCharges > 0) {
+            player.superJump();
+          }
+        }
+        
+        if (e.code === 'KeyP') {
+          e.preventDefault();
+          isPaused = !isPaused;
+          const pauseBtn = document.getElementById('pauseBtn');
+          if (pauseBtn) {
+            pauseBtn.textContent = isPaused ? '▶ Play' : '⏸ Pause';
+          }
+          if (!isPaused && !gameOver) {
+            lastTime = 0;
+            requestAnimationFrame(gameLoop);
+          }
+        }
+        
+        if (e.code === 'KeyR') {
+          e.preventDefault();
+          resetGame();
+        }
+        
+        if (e.code === 'KeyM') {
+          e.preventDefault();
+          openShop();
+        }
+      });
+    }
+    
+    // Initialize shop items based on purchases
+    function initShop() {
+      if (upgrades.jump > 1) {
+        const element = document.getElementById('buyJump');
+        if (element) {
+          element.classList.add('disabled');
+          element.innerHTML = '<div><strong>Higher Jump</strong><p style="font-size: 12px;">Already Purchased</p></div>';
         }
       }
       
-      if (e.code === 'KeyR') {
-        e.preventDefault();
-        resetGame();
+      if (upgrades.shield) {
+        const element = document.getElementById('buyShield');
+        if (element) {
+          element.classList.add('disabled');
+          element.innerHTML = '<div><strong>Shield Power-up</strong><p style="font-size: 12px;">Already Purchased</p></div>';
+        }
       }
       
-      if (e.code === 'KeyM') {
-        e.preventDefault();
-        openShop();
+      if (upgrades.superJump) {
+        const element = document.getElementById('buySuperJump');
+        if (element) {
+          element.classList.add('disabled');
+          element.innerHTML = '<div><strong>Super Jump Upgrade</strong><p style="font-size: 12px;">Already Purchased</p></div>';
+        }
       }
+      
+      if (upgrades.character === 2) {
+        const element = document.getElementById('buyCharacter');
+        if (element) {
+          element.classList.add('disabled');
+          element.innerHTML = '<div><strong>New Character</strong><p style="font-size: 12px;">Already Purchased</p></div>';
+        }
+      }
+      
+      if (upgrades.doubleJump) {
+        const element = document.getElementById('buyDoubleJump');
+        if (element) {
+          element.classList.add('disabled');
+          element.innerHTML = '<div><strong>Double Jump</strong><p style="font-size: 12px;">Already Purchased</p></div>';
+        }
+      }
+    }
+    
+    // Initialize everything when page loads
+    window.addEventListener('load', () => {
+      resizeCanvas();
+      initClouds();
+      setupEventListeners();
+      initShop();
+      updateDisplays();
     });
-    
-    // Initialize
-    updateDisplays();
-    document.getElementById('startModal').style.display = 'flex';
-    
-    // Update shop prices based on purchases
-    if (upgrades.jump > 1) {
-      document.getElementById('buyJump').classList.add('disabled');
-      document.getElementById('buyJump').innerHTML = '<div><strong>Higher Jump</strong><p style="font-size: 12px;">Already Purchased</p></div>';
-    }
-    
-    if (upgrades.shield) {
-      document.getElementById('buyShield').classList.add('disabled');
-      document.getElementById('buyShield').innerHTML = '<div><strong>Shield Power-up</strong><p style="font-size: 12px;">Already Purchased</p></div>';
-    }
-    
-    if (upgrades.superJump) {
-      document.getElementById('buySuperJump').classList.add('disabled');
-      document.getElementById('buySuperJump').innerHTML = '<div><strong>Super Jump Upgrade</strong><p style="font-size: 12px;">Already Purchased</p></div>';
-    }
-    
-    if (upgrades.character === 2) {
-      document.getElementById('buyCharacter').classList.add('disabled');
-      document.getElementById('buyCharacter').innerHTML = '<div><strong>New Character</strong><p style="font-size: 12px;">Already Purchased</p></div>';
-    }
-    
-    if (upgrades.doubleJump) {
-      document.getElementById('buyDoubleJump').classList.add('disabled');
-      document.getElementById('buyDoubleJump').innerHTML = '<div><strong>Double Jump</strong><p style="font-size: 12px;">Already Purchased</p></div>';
-    }
   </script>
 </body>
 </html>
